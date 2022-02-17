@@ -1,0 +1,200 @@
+global class AADDPForBPUSRDCorporateGroup implements Loop.IApexDataSource {
+    @testVisible private static String rdTransactions = 'RDTransactions';
+    @testVisible private static String SALES_INVOICE = 'SalesInvoice';
+    @testVisible private static String CLIENT_NUMBER = 'ClientNumber';
+    @testVisible private static String CLIENT = 'Client';
+    @testVisible private static String TYPE = 'Type';
+    @testVisible private static String ATM_TRANSACTION_NUMBER = 'ATMTransactionNumber';
+    @testVisible private static String ACCOUNTING_ACTION_CODE = 'AccountingActionCode';
+    @testVisible private static String CHECK_NUMBER = 'CheckNumber';
+    @testVisible private static String AMOUNT = 'Amount';
+    @testVisible private static String COUNT = 'Count';
+    @testVisible private static String COMMENTS = 'Comments';
+    @testVisible private BillingStatementDAO.IBillingStatementDAO billingStatementDAOInstance = new BillingStatementDAO();
+    @testVisible private static Integer maxDaysForUnbilledBillingItems = 90;
+    @testVisible private static List<String> listOfStrings;
+     
+    public Set<String> getGlobalDescribe() {
+        return new Set<String>{
+            rdTransactions
+        };
+    }
+    
+    public Set<String> getChildRelationships(String objectName) {
+        return new Set<String>();
+    }
+    
+    public List<Loop.ExternalData.DataObject> describeObjects(List<String> objectNames) {
+        List<Loop.ExternalData.DataObject> describeObjectResults = new List<Loop.ExternalData.DataObject>();
+        for (String objectName : objectNames) {      
+            List<Loop.ExternalData.FieldInfo> fields = new List<Loop.ExternalData.FieldInfo>();
+            if(objectName == rdTransactions) {
+                fields = new List<Loop.ExternalData.FieldInfo> {
+                    new Loop.ExternalData.FieldInfo(SALES_INVOICE, Schema.DisplayType.String),
+                    new Loop.ExternalData.FieldInfo(CLIENT_NUMBER, Schema.DisplayType.String),
+                    new Loop.ExternalData.FieldInfo(CLIENT, Schema.DisplayType.String),
+                    new Loop.ExternalData.FieldInfo(TYPE, Schema.DisplayType.String),
+                    new Loop.ExternalData.FieldInfo(ATM_TRANSACTION_NUMBER, Schema.DisplayType.String),
+                    new Loop.ExternalData.FieldInfo(ACCOUNTING_ACTION_CODE, Schema.DisplayType.String),
+                    new Loop.ExternalData.FieldInfo(CHECK_NUMBER, Schema.DisplayType.String),
+                    new Loop.ExternalData.FieldInfo(AMOUNT, Schema.DisplayType.Double),
+                    new Loop.ExternalData.FieldInfo(COUNT, Schema.DisplayType.Integer),
+                    new Loop.ExternalData.FieldInfo(COMMENTS, Schema.DisplayType.String)
+                };
+            }
+         
+            Loop.ExternalData.DataObject describeObjectResult = new Loop.ExternalData.DataObject(objectName, fields);            
+            describeObjectResults.add(describeObjectResult);
+        }        
+        return describeObjectResults;
+    }
+    
+    public Loop.ExternalData.QueryResultSet query(Loop.ExternalData.QueryRequestInfo requestInfo) {
+        Loop.ExternalData.QueryResultSet queryResultSet = new Loop.ExternalData.QueryResultSet();
+        if(!Test.isRunningTest()) {
+            listOfStrings = requestInfo.GetObjectNames();
+        }
+		
+        Billing_Statements__c billingStatementRec;
+        DateTime startDate = System.now();
+        DateTime endDate = System.now();
+        List<Billing_Statements__c> billingStatementList = 
+            billingStatementDAOInstance.getBillingStatementByIdForDDP(requestInfo.RecordId);
+        if(billingStatementList == null || billingStatementList.isEmpty()) {
+            return null;
+        }
+        billingStatementRec = billingStatementList[0];
+        US_Auto_Billing_Statement_Generation__c bsSetting = US_Auto_Billing_Statement_Generation__c.getOrgDefaults();
+        if(bsSetting.Maximum_Billed_Duration_For_Corp_Group__c != null) {
+            maxDaysForUnbilledBillingItems = (Integer)bsSetting.Maximum_Billed_Duration_For_Corp_Group__c;
+        }
+        startDate = billingStatementRec.CreatedDate.addDays((-1)*maxDaysForUnbilledBillingItems);
+        endDate = billingStatementRec.CreatedDate.addDays(1);
+        
+        List<String> accountingActionToExcludeList = new List<String>();
+        List<String> accountingActionCodeForCheckNumberList = new List<String>();
+        US_Auto_DDP_Config_Billing_Statement__c ddpSetting = US_Auto_DDP_Config_Billing_Statement__c.getInstance();
+        if(ddpSetting != null) {
+            if(String.isNotEmpty(ddpSetting.Action_Code_To_Exclude_From_RD_Tab_CG__c)) {
+                accountingActionToExcludeList = (List<String>)ddpSetting.Action_Code_To_Exclude_From_RD_Tab_CG__c.split(',');
+            }
+            if(String.isNotEmpty(ddpSetting.Acc_Action_For_Legacy_Outgoing_Check_No__c)) {
+                accountingActionCodeForCheckNumberList = (List<String>)ddpSetting.Acc_Action_For_Legacy_Outgoing_Check_No__c.split(',');
+            }
+        }
+
+        List<Billing_Item__c> billingItemList = BillingItemDAO.getRDBillingItemListByBSIdForCorporateGroupDDP(requestInfo.RecordId, 
+            BillingItemConstants.BILLING_ITEM_RD_TRANSACTION_RECORD_TYPE_ID, accountingActionToExcludeList, startDate, endDate);
+        
+  
+        
+        if(billingItemList == null) {
+            return queryResultSet;
+        }
+        // Start Code Change By Zahid//
+        Map<String, Integer> clientIdVSCountMap = new Map<String, Integer>();
+        Map<String, Decimal> clientidVsAmountMap = new Map<String, Decimal>();
+        //key = clientid+Code
+     
+         for(Billing_Item__c billingItem : billingItemList) {
+            String key = billingItem.Sales_Invoice__r.Name+'-'+billingItem.Client__r.Name;
+            System.debug('1.1->check: key'+key);
+             if(clientIdVSCountMap.containskey(key)) {
+                 System.debug('1.3->check: clientIdVSCountMapKey'+clientIdVSCountMap.containskey(key));
+                 Integer count = clientIdVSCountMap.get(key);
+                 clientIdVSCountMap.put(key, count++);
+             }
+             else{
+                 System.debug('1.8->check: clientIdVSCountMapKey'+clientIdVSCountMap.containskey(key));
+                 clientIdVSCountMap.put(key,1);
+             }
+                
+            if(clientidVsAmountMap.containskey(key)) {
+				System.debug('1.13->check: clientidVsAmountMap'+clientidVsAmountMap.containskey(key));
+                Decimal amount = clientidVsAmountMap.get(key);
+                clientidVsAmountMap.put(key, amount+billingItem.Amount__c);
+             }
+             else {
+                 System.debug('1.18->check: clientidVsAmountMap'+clientidVsAmountMap.containskey(key));
+                 clientidVsAmountMap.put(key, billingItem.Amount__c);
+             }
+          
+     
+      }
+  // End Code Change By Zahid//
+        
+       for (String objectName : listOfStrings) {
+            List<String> fields = new List<String>();
+            Loop.ExternalData.QueryResult queryResult = new Loop.ExternalData.QueryResult(objectName, fields);
+            if(objectName == rdTransactions) {
+                fields = new List<String> { SALES_INVOICE, CLIENT_NUMBER, CLIENT, TYPE, ATM_TRANSACTION_NUMBER, ACCOUNTING_ACTION_CODE, COUNT, CHECK_NUMBER, AMOUNT, COMMENTS };
+                queryResult = addRDTabData(objectName, fields, queryResult, accountingActionCodeForCheckNumberList, clientidVsAmountMap, clientIdVSCountMap, billingItemList);
+            }
+
+            queryResultSet.add(queryResult);
+        }
+        return queryResultSet;
+    }
+    
+    public Loop.ExternalData.QueryResult addRDTabData(String objectName, List<String> fields, Loop.ExternalData.QueryResult queryResult,
+        				List<String> accountingActionCodeForCheckNumberList, Map<String, Decimal> clientidVsAmountMap, 
+                        Map<String, Integer> clientIdVSCountMap, List<Billing_Item__c> billingItemList) {
+                            
+        queryResult = new Loop.ExternalData.QueryResult(objectName, fields);
+        if(billingItemList == null) {
+            return queryResult;
+        }
+        for (Billing_Item__c billingItem : billingItemList) {
+            String key = billingItem.Sales_Invoice__r.Name+'-'+billingItem.Client__r.Name;
+            List<String> recordValues = new List<String>();
+            String incomingCheckNumber = billingItem.RD_Transaction__r.Receipt__r.Check_Number__c;
+            String legacyCheckNumber = billingItem.RD_Transaction__r.Legacy_Check_Number__c;
+            String outgoingCheckNumber = billingItem.RD_Transaction__r.Outgoing_Check__c;
+           
+            for(String field : fields) {
+                if(field == SALES_INVOICE) {
+                    recordValues.add(billingItem.Sales_Invoice__r.Name);
+                } else if(field == CLIENT_NUMBER) {
+                    recordValues.add(billingItem.Client__r.AccountNumber);
+                } else if(field == CLIENT) {
+                    recordValues.add(billingItem.Client__r.Name);
+                } else if(field == TYPE) {
+                    recordValues.add(billingItem.RD_Transaction__r.Type__c);
+                } else if(field == ATM_TRANSACTION_NUMBER) {
+                    recordValues.add(billingItem.Name);
+                } else if(field == ACCOUNTING_ACTION_CODE) {
+                    recordValues.add(billingItem.RD_Transaction__r.Action_Code__c);
+                } else if(field == CHECK_NUMBER) {
+                    Integer count = clientIdVSCountMap.get(key);
+                            if(count == 0) {
+                                count = clientIdVSCountMap.get(key);
+                            }
+                    recordValues.add(String.valueOf(count));
+                    /*String actionCode = billingItem.RD_Transaction__r.Action_Code__c;
+                    recordValues.add(actionCode == AccountingActionConstants.ACCOUNTING_ACTION_10 ? 
+                        (actionCode == AccountingActionConstants.ACCOUNTING_ACTION_10 ? 
+                        (String.isEmpty(legacyCheckNumber) ? incomingCheckNumber : legacyCheckNumber) : '') : 
+                        (accountingActionCodeForCheckNumberList.contains(actionCode) ? 
+                        (String.isEmpty(legacyCheckNumber) ? outgoingCheckNumber : legacyCheckNumber) : incomingCheckNumber));*/
+                } else if(field == AMOUNT) {	 
+                    	 recordValues.add(String.valueOf(clientidVsAmountMap.get(key)));
+                         //recordValues.add(String.valueOf(billingItem.Amount__c));
+                } 
+                
+                else if(field == COMMENTS) {
+                    String actionCode = billingItem.RD_Transaction__r.Action_Code__c;
+                    recordValues.add((actionCode == AccountingActionConstants.ACCOUNTING_ACTION_TO || 
+                        actionCode == AccountingActionConstants.ACCOUNTING_ACTION_TI) ? billingItem.RD_Transaction__r.Description__c : 
+                        billingItem.RD_Transaction__r.Accounting_Action_Description__c);
+                } else {
+                    recordValues.add('');
+                }
+            }
+            if(recordValues != null && !recordValues.isEmpty()) {
+                queryResult.rows.add(recordValues); 
+            }
+        }
+        return queryResult;
+    }
+
+}
