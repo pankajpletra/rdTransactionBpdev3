@@ -1,0 +1,111 @@
+@isTest
+private class AADDPForBPUSRDCorporateGroupTests {
+    private static AADDPForBPUSRDCorporateGroup aDDPForBPUSRdCorporateGroupInstance = new AADDPForBPUSRDCorporateGroup();
+    
+    @isTest 
+    static void testDescribeObjectsShouldReturnResult() {
+    
+        Test.startTest();
+            List<Loop.ExternalData.DataObject> result = aDDPForBPUSRdCorporateGroupInstance.describeObjects(
+                new List<String>{'RDTransactions'});
+        Test.stopTest();
+
+        System.assertEquals(1, result.size(), 'Should return a value');
+    }
+  
+    @isTest 
+    static void testGetGlobalDescribeShouldReturnResult() {
+        Test.startTest();
+            Set<String> result = aDDPForBPUSRdCorporateGroupInstance.getGlobalDescribe();
+        Test.stopTest();
+
+        System.assertEquals(1, result.size(), 'Should return a value');
+    }
+  
+    @isTest 
+    static void testGetChildRelationshipsShouldReturnEmptySet() {
+            
+        Test.startTest();
+            Set<String> result = aDDPForBPUSRdCorporateGroupInstance.getChildRelationships('child');
+        Test.stopTest();
+
+        System.assertEquals(0, result.size(), 'Should return empty set');
+    }
+        
+    @isTest 
+    static void testQueryForBillingItemShouldReturnQueryResultSet() {
+        Loop.ExternalData.QueryRequestInfo requestInfo = new Loop.ExternalData.QueryRequestInfo();
+        Loop.ExternalData.QueryResultSet queryResultSet = new Loop.ExternalData.QueryResultSet();
+        AADDPForBPUSRDCorporateGroup.listOfStrings = new List<String>{'RDTransactions'};
+        Billing_Statements__c billingStatement = new Billing_Statements__c(Id = TWGTestFactory.getFakeId(Billing_Statements__c.sObjectType),
+            CreatedDate = System.now());
+        requestInfo.RecordId = billingStatement.Id;
+        MockDAOs.BillingStatementDAOMock billingStatementDAOInstance = new MockDAOs.BillingStatementDAOMock();
+        billingStatementDAOInstance.billingStatementsToReturn = new List<Billing_Statements__c> { billingStatement };
+        aDDPForBPUSRdCorporateGroupInstance.billingStatementDAOInstance = billingStatementDAOInstance;
+        
+        Test.startTest();
+            queryResultSet = aDDPForBPUSRdCorporateGroupInstance.query(requestInfo);
+        Test.stopTest();
+
+        System.assertEquals(true, queryResultSet != null, 'queryResultSet should not be null.');
+    }
+
+    @isTest 
+    static void testRDTabDataSHouldReturnRQueryResult() {  
+        Account testAccount = new Account(Id = TWGTestFactory.getFakeId(Account.sObjectType));
+        Billing_Statements__c billingStatement = new Billing_Statements__c(Id = TWGTestFactory.getFakeId(Billing_Statements__c.sObjectType));
+        testAccount.Name = 'Test Account';
+        testAccount.AccountNumber = 'Test';
+        List<String> fields = new List<String>();
+        Loop.ExternalData.QueryResult queryResult = new Loop.ExternalData.QueryResult('BillingStatement', fields);
+        fields = new List<String> { 'SalesInvoice', 'ClientNumber', 'Client', 'Type', 'ATMTransactionNumber', 'AccountingActionCode', 
+            'CheckNumber', 'Amount', 'Comments' };
+        Billing_Item__c billingItem = new Billing_Item__c(Id = TWGTestFactory.getFakeId(Billing_Item__c.sObjectType));
+        
+        RD_Transaction__c rdTransaction = new RD_Transaction__c(Id = TWGTestFactory.getFakeId(RD_Transaction__c.sObjectType));
+        c2g__codaInvoice__c salesInvoice = new c2g__codaInvoice__c(Id = TWGTestFactory.getFakeId(c2g__codaInvoice__c.sObjectType));
+        rdTransaction.Sales_Invoice__r = salesInvoice;
+        Accounting_Action__c accountingAction = new Accounting_Action__c(Id = TWGTestFactory.getFakeId(Accounting_Action__c.sObjectType));
+        accountingAction.Name = '2A';
+        accountingAction.Description__c = 'Test';
+        rdTransaction.Accounting_Action__r = accountingAction;
+        Receipt__c receipt = new Receipt__c(Id = TWGTestFactory.getFakeId(Receipt__c.sObjectType));
+        receipt.Check_Number__c = 'Test';
+        rdTransaction.Legacy_Check_Number__c = 'Test';
+        rdTransaction.Outgoing_Check__c = 'Test';
+        rdTransaction.Receipt__r = receipt;
+        rdTransaction.Description__c = 'Test';
+        billingItem.RD_Transaction__r = rdTransaction;
+        //TestClass RDcorporateGroup Changes By Zahid//
+       /* 
+    	Map<String, Integer> clientIdVSCountMap = new Map<String, Integer>();
+        Map<String, Decimal> clientIdVsAmountMap = new Map<String, Decimal>();
+    	
+        for(Billing_Item__c billingItemList : billingItem) {
+            String key =  billingItemList.Client__c + '-' + billingItemList.Sales_Invoice__r.Name +'-'+ billingItemList.RD_Transaction__r.Action_Code__c; 
+             if(clientIdVSCountMap.containskey(key)) {
+                 Integer count = clientIdVSCountMap.get(key);
+                 clientIdVSCountMap.put(key, count+1);
+             }
+             else{
+                 clientIdVSCountMap.put(key,1);
+             }
+                
+            if(clientidVsAmountMap.containskey(key)) {
+                Decimal amount = clientidVsAmountMap.get(key);
+                clientidVsAmountMap.put(key, amount+billingItemList.Amount__c);
+             }
+             else {
+                 clientidVsAmountMap.put(key, billingItemList.Amount__c);
+             }
+      }*/
+      
+        Test.startTest();
+            Loop.ExternalData.QueryResult returnedQueryResult = aDDPForBPUSRdCorporateGroupInstance.addRDTabData(
+                'RDTransactions', fields, queryResult, new List<String> {'10'},  new List<Billing_Item__c> { billingItem });
+        Test.stopTest();
+
+        System.assertEquals(true, returnedQueryResult != null, 'returnedQueryResult should not be null.');  
+    }
+}
